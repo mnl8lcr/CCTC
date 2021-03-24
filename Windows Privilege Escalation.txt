@@ -85,9 +85,9 @@ Application Log - developers decide what's logged, specific to application
 Security Log - Invalid login attempts, resource usage
 System Log - Windows stuff, buffer overflows, errors, driver failure
 Here are some important Windows system log IDs:
-4624/4625:
-4720: 
-4672: 
+4624/4625 successful/failed login
+4720 account created
+4672 administrator equivalent user logs on
 7040: Service Manager
 7045: Service Creation
 You can view these by going into the system log on the GUI, and check on the event ID column, or right click on a specific event

