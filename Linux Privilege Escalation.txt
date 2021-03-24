@@ -1,0 +1,38 @@
+Establish & Maintining Linux Persistence: adding/hijacking a user account; implementing a boot process persistence; adding/modifying a cron job; adding a kernel module w/ a backdoor
+
+SUDO STUFF:
+Using "sudo -l", you're able to see what commands you're allowed to run as root. You'll see apt get.
+Then go to gtfobins to see what sudo vulnerabilities there are for the apt-get binary: https://gtfobins.github.io/gtfobins/apt-get/#sudo
+sudo apt-get changelog apt
+
+SUID/SGID - "Set User/Group ID on Execution"
+Search for a binary with ls -la /bin/ping. You'll notice on the permissions that there's an s, and it has "root root". This means it must always run with root privileges regardless of the user. The binary is also highlighted red.
+You can search for similar binaries that may be vulnerability for priv escalation by doing:
+find / -type f -perm /4000 2>/dev/null (4 is the SUID bit; the "s" specified above)
+To search for SGID binaries (where the bit is 2)
+find / -type f -perm /2000 2>/dev/null (2 is the SGID bit; the "g"; the 6 is SUID and GUID)
+Look at the output list of binaries. If it's a well-known binary, there's probably some exploit in GTFO bins(click on the SUID tag to get that list: https://gtfobins.github.io/#+suid ). If not, then you'll halve to exploit it manually, as we do below for the netstat-natpu binary.
+Try using the "objdump" or "readelf" function to read the actual binary:
+objdump -Mintel -d /bin/netstat_natpu | grep "<main>:" -A 19
+readelf -p .rodata /bin/netstat_natpu | head -n 4
+
+Look in the path variable (echo $PATH). You'll see what commands are executable within your path. You'll see that netstat is NOT one of those. You know that it uses the netstat command and sets the userid to root upon execution.
+let's go to the /tmp directory (so that we can write to it), make a random script called netstat with !#/bin/bash and /bin/bash -i, and chmod +x netstat. This binary creates an interactive bash shell.
+Then let's redefine our path with "PATH=/tmp:$PATH". Now you'll see that /tmp is in your path. This means that whenever you run a command, /tmp is one of the directories that bash will look through to find the command.
+*Remember that every user has their own path variable.
+Now let's just run our netstat_natpu. After that, you'll see that we've been changed to root(run whoami to check).
+
+CRON JOBS
+Places to look: /etc/cron.d, ls /etc/cron* -> shows you all of your scheduled jobs, /etc/crontab file. 
+/etc/crontab shows the configuration for all crons
+let's find all writable crontabs:
+find /var/spool/cron/crontabs /etc/cron* -writable -ls
+Let's look for all writable files:
+find / -type f -writable -o -type d -writable 2>/dev/null
+
+PATH
+All commands will search the directories listed in the $PATH variable to find their executable location.Let's add a dot (current working directory) into the path with
+PATH=.:$PATH
+Now if we "echo $PATH", we'll see a dot in the path.
+Let's go to our /tmp, where we created our false netstat file. (Assuming we have not yet added /tmp to our path)
+From /tmp, execute netstat_natpu. Normally, this function doesn't do anything malicious since it just calls regular netstat. But, since we've added the dot and we're running it from /tmp, where our malicious netstat is, netstat_natpu

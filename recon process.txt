@@ -1,0 +1,54 @@
+I have an IP, what now?
+
+1. Scan it
+	1a. Find the ports/services running:	
+		-See active host ports nc -nuzw1 172.20.20.45 1-1023
+		-view one port in detail: nc 172.20.20.45 23
+		-			
+	1b. connect to the ports and see if there are any hints or flags: curl, wget -r
+	1c. download said hints or flags, or view them: find / -name "flag*" 2>/dev/null
+
+2. Connect to it
+	2a. what device am I on?
+	2b. what files of interest are there, if any?
+	2c. what interfaces and IP's does this device have?: ip addr, ip neigh, uname -a, ip route
+	
+3. Determine what other devices that devices can communicate with
+	3a. additional subnets
+	3b. is it doing any NATing?
+
+4. Move past it and pivot further into the network
+	4a. is it a remote or local tunnel?
+	- LOCAL (a single port, one-to-one):
+	- ssh pivot@pivotip -L localport:targetip:targetport -NT
+	- wget localhost:localport, curl localhost:localport, wget -r ftp://ip
+
+	- REMOTE
+	- (from insider) ssh -p altport_option IH@10.10.0.40 -R IHport:localhost:22 -NT
+	- (options: from IH, doing dynamic forwarding from insider): ssh -D 9050 insider@localhost -p IHport
+		--- Now use proxychains for any remaining functions
+	- (options: from IH, set up a single local port fwd on IHport2 from insider to target @ targport) ssh insider@localhost -p IHport -L IHport2:target:targport -NT
+		--- You can only view stuff on targs targport 2 using: curl localhost:IHport2 or wget -r localhost:IHport2
+
+	- DYNAMIC
+	- ssh -D 9050 pivot@pivotfloatingIP -NT
+
+	- REMOTE PORT BINDING W/ PIVOT
+	- (set it up: tunnel directly to insider from IH): ssh -p 7777 net2_student29@10.50.20.73 -L 29901:10.2.2.7:23 -NT
+	- (from IH: set up tunnel to telnet in): telnet localhost 29901
+	- (on Insider: set up remote SSH (insider 2222) back to the pivot (pivot alt 7777): ssh -p 7777 net2_student29@10.2.2.6 -R 22902:localhost:2222 -NT
+	- (Back on IH; create tunnel to newly created remote link between insider & pivot (29902): ssh -p 7777 net2_student29@10.50.20.73 -L 22903:localhost:22902 -NT
+	- (options: from insider, do a dynamic port scan from insider's perspective, on port 22903): ssh -D 9050 net2_student29@localhost -p 22903 -NT
+
+		- (from insider) ssh pivot@pivotinternalIP -R pivotlocalport:localhost:22 -NT
+		- (from IH) ssh pivot@pivotfloatingIP -L IHlocalport:localhost:pivotlocalport -NT
+		- (options: from IH, doing dynamic PF from insider) ssh -D 9050 insider@localhost -p IHlocalport -NT
+		- (options: from IH, make another local PF from internal IHlocalport2 to targ2 on targport) ssh targ2@localhost -p IHlocalport -L IHport2:targ2:targport -NT
+		-	- To do any curl or wget, make sure to use localhost:IHport2
+
+	4b. do I need to use telnet or ssh?
+		- telnet IP
+	4c. do I need to close a dynamic tunnel or set up a new one?
+		- to close a tunnel: ps -elf | grep 9050 (look for first pid after "student/root")
+		-kill using: kill -9 <pid>
+		- to see all ports currently in use: netstat -antp
